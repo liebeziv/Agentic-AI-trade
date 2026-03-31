@@ -1,0 +1,21 @@
+# Copy to api_keys.yaml (gitignored) and fill in
+# Prefer using .env file instead — this is a legacy template
+
+anthropic:
+  api_key: "sk-ant-..."
+
+newsapi:
+  api_key: "your_key"
+
+alpaca:
+  api_key: "your_key"
+  secret_key: "your_secret"
+  base_url: "https://paper-api.alpaca.markets"
+
+binance:
+  api_key: "your_key"
+  secret: "your_secret"
+
+telegram:
+  bot_token: "your_token"
+  chat_id: "your_chat_id"

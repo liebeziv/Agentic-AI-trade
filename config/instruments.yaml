@@ -1,0 +1,84 @@
+instruments:
+  forex:
+    - symbol: "EURUSD"
+      pip_value: 0.0001
+      spread_typical: 0.00012
+      lot_size: 100000
+      margin_pct: 3.33
+    - symbol: "GBPUSD"
+      pip_value: 0.0001
+      spread_typical: 0.00015
+      lot_size: 100000
+      margin_pct: 3.33
+    - symbol: "USDJPY"
+      pip_value: 0.01
+      spread_typical: 0.012
+      lot_size: 100000
+      margin_pct: 3.33
+    - symbol: "AUDUSD"
+      pip_value: 0.0001
+      spread_typical: 0.00014
+      lot_size: 100000
+      margin_pct: 5.0
+
+  futures:
+    - symbol: "ES"
+      tick_size: 0.25
+      tick_value: 12.50
+      margin: 15000
+      exchange: "CME"
+    - symbol: "NQ"
+      tick_size: 0.25
+      tick_value: 5.00
+      margin: 18000
+      exchange: "CME"
+    - symbol: "GC"
+      tick_size: 0.10
+      tick_value: 10.00
+      margin: 10000
+      exchange: "COMEX"
+    - symbol: "CL"
+      tick_size: 0.01
+      tick_value: 10.00
+      margin: 8000
+      exchange: "NYMEX"
+
+  us_stocks:
+    - symbol: "AAPL"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "NVDA"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "MSFT"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "TSLA"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "AMZN"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "META"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "GOOGL"
+      min_qty: 1
+      commission_per_share: 0.005
+    - symbol: "SPY"
+      min_qty: 1
+      commission_per_share: 0.005
+
+  crypto:
+    - symbol: "BTC/USDT"
+      min_qty: 0.0001
+      commission_pct: 0.1
+      exchange: "binance"
+    - symbol: "ETH/USDT"
+      min_qty: 0.001
+      commission_pct: 0.1
+      exchange: "binance"
+    - symbol: "SOL/USDT"
+      min_qty: 0.01
+      commission_pct: 0.1
+      exchange: "binance"

@@ -1,0 +1,36 @@
+system:
+  name: "atlas-trader"
+  phase: 1
+  mode: "paper"            # paper | live | backtest
+  timezone: "UTC"
+  log_level: "INFO"
+  log_dir: "./data/logs"
+
+trading:
+  default_timeframes: ["5m", "15m", "1h"]
+  analysis_interval_seconds: 300
+  max_instruments_parallel: 5
+  trading_hours:
+    forex:     { start: "22:00", end: "21:59", days: [0,1,2,3,4] }  # Sun-Fri UTC
+    us_stocks: { start: "13:30", end: "20:00", days: [0,1,2,3,4] }
+    hk_stocks: { start: "01:30", end: "08:00", days: [0,1,2,3,4] }
+    crypto:    { start: "00:00", end: "23:59", days: [0,1,2,3,4,5,6] }
+    futures:   { start: "23:00", end: "22:00", days: [0,1,2,3,4] }
+
+claude:
+  default_model: "claude-sonnet-4-6"
+  premium_model: "claude-opus-4-6"
+  escalation_threshold: 0.8
+  max_tokens_analysis: 2000
+  max_tokens_reflection: 1500
+  temperature: 0.3
+  cache_ttl_seconds: 300
+  monthly_budget_usd: 200
+  batch_interval_seconds: 300
+
+backtest:
+  initial_capital: 100000
+  commission_pct: 0.1
+  slippage_pct: 0.05
+  walk_forward_window_days: 90
+  walk_forward_step_days: 30
