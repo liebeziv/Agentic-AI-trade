@@ -12,24 +12,28 @@ from dotenv import load_dotenv
 
 from src.analysis.claude_agent import ClaudeAgent
 from src.analysis.regime_detector import RegimeDetector
+from src.analysis.sentiment_scorer import SentimentScorer
 from src.analysis.technical import TechnicalEngine
 from src.data.data_store import DataStore
 from src.data.market_data import MarketDataFetcher
+from src.data.news_feed import NewsFeed
+from src.data.social_sentiment import SocialSentimentFeed
 from src.execution.exchange_adapter import AdapterFactory
 from src.execution.order_manager import KillSwitch, OrderManager
+from src.orchestrator.correlation_monitor import CorrelationMonitor
+from src.orchestrator.global_risk_manager import GlobalRiskManager
 from src.reflection.attribution import AttributionEngine
+from src.reflection.strategy_evolver import StrategyEvolver
 from src.reflection.trade_journal import TradeJournal
 from src.strategy.orchestrator import Orchestrator
 from src.strategy.position_sizer import PositionSizer
 from src.strategy.risk_manager import RiskManager
+from src.strategy.strategies.event_driven_agent import EventDrivenAgent
 from src.strategy.strategies.mean_reversion_agent import MeanReversionAgent
 from src.strategy.strategies.momentum_agent import MomentumAgent
-from src.strategy.strategies.event_driven_agent import EventDrivenAgent
 from src.strategy.strategies.stat_arb_agent import StatArbAgent
-from src.orchestrator.global_risk_manager import GlobalRiskManager
-from src.orchestrator.correlation_monitor import CorrelationMonitor
-from src.reflection.strategy_evolver import StrategyEvolver
-from src.types import Order, OrderStatus, OrderType, Side, TradeAction
+from src.types import Order, OrderStatus, OrderType, PortfolioState, Position, Side, TradeAction
+from src.utils.health import HealthServer
 from src.utils.logger import get_logger, setup_logging
 from src.utils.notifier import Notifier
 from src.utils.time_utils import is_market_open
@@ -62,6 +66,32 @@ def load_config() -> dict:
         },
         "binance": {"api_key": os.getenv("BINANCE_API_KEY", ""),
                     "secret": os.getenv("BINANCE_SECRET", ""), "testnet": True},
+        "okx": {"api_key": os.getenv("OKX_API_KEY", ""),
+                "secret": os.getenv("OKX_SECRET", ""),
+                "passphrase": os.getenv("OKX_PASSPHRASE", ""), "sandbox": True},
+        "futu": {
+            "host": os.getenv("FUTU_HOST", settings.get("futu", {}).get("host", "127.0.0.1")),
+            "port": int(os.getenv("FUTU_PORT", settings.get("futu", {}).get("port", 11111))),
+            "trade_env": int(os.getenv("FUTU_TRADE_ENV",
+                             settings.get("futu", {}).get("trade_env", 1))),
+            "unlock_pwd": os.getenv("FUTU_UNLOCK_PWD",
+                          settings.get("futu", {}).get("unlock_pwd", "")),
+        },
+        "news": {
+            "newsapi_key": os.getenv("NEWSAPI_KEY",
+                           settings.get("news", {}).get("newsapi_key", "")),
+            "rss_feeds": settings.get("news", {}).get("rss_feeds", []),
+        },
+        "social": {
+            "reddit_client_id": os.getenv("REDDIT_CLIENT_ID",
+                                settings.get("social", {}).get("reddit_client_id", "")),
+            "reddit_client_secret": os.getenv("REDDIT_CLIENT_SECRET",
+                                    settings.get("social", {}).get("reddit_client_secret", "")),
+            "reddit_user_agent": settings.get("social", {}).get(
+                "reddit_user_agent", "atlas-trader/1.0"),
+            "stocktwits_token": os.getenv("STOCKTWITS_ACCESS_TOKEN",
+                                settings.get("social", {}).get("stocktwits_token", "")),
+        },
         "notifier": {"telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
                      "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", "")},
         "initial_capital": settings["backtest"]["initial_capital"],
@@ -91,6 +121,33 @@ async def run_agent_cycle(
     except Exception as exc:
         log.error("Agent signal error", agent=agent.agent_id, error=str(exc))
         return []
+
+
+async def _fetch_market_data(
+    instruments: list[str], data_fetcher, tech_engine, regime_detector
+) -> tuple[dict, dict, object]:
+    """Fetch OHLCV bars and compute technical snapshots for all instruments."""
+    technical_snapshots: dict = {}
+    market_data: dict = {}
+    regime = None
+
+    for instrument in instruments:
+        if not is_market_open(instrument):
+            continue
+        try:
+            bars_15m = await data_fetcher.get_latest_bars(instrument, "15m", 300)
+            bars_1h = await data_fetcher.get_latest_bars(instrument, "1h", 300)
+            if bars_15m.is_empty():
+                continue
+            snap = tech_engine.compute_all(bars_15m, instrument, "15m")
+            technical_snapshots[instrument] = snap
+            market_data[instrument] = bars_15m
+            if regime is None and not bars_1h.is_empty():
+                regime = regime_detector.classify(bars_1h)
+        except Exception as exc:
+            log.error("Data fetch error", instrument=instrument, error=str(exc))
+
+    return technical_snapshots, market_data, regime
 
 
 async def main() -> None:
@@ -123,6 +180,9 @@ async def main() -> None:
     attribution = AttributionEngine(store)
 
     initial_capital = config["initial_capital"]
+    news_feed = NewsFeed(config["news"])
+    social_feed = SocialSentimentFeed(config["social"])
+    sentiment_scorer = SentimentScorer()
 
     # Build agents
     agent_config = {"instruments": config["instruments"]}
@@ -165,6 +225,13 @@ async def main() -> None:
         max_daily_loss_pct=config["hard_limits"]["max_daily_loss_pct"],
     )
 
+    # Start health server (port 8080)
+    health_server = HealthServer(port=8080)
+    health_server.register_check("kill_switch", lambda: not kill_switch.active)
+    health_server.register_check("data_fetcher", lambda: data_fetcher is not None)
+    health_server.start()
+    log.info("Health server started", port=8080)
+
     log.info("Multi-agent system started",
              agents=[a.agent_id for a in agents],
              instruments=args.instruments,
@@ -178,31 +245,29 @@ async def main() -> None:
     cycle_count = 0
     last_perf_update = datetime.utcnow()
     last_weekly_review = datetime.utcnow()
+    # Track open positions across cycles for GlobalRiskManager
+    open_positions: list[Position] = []
 
     try:
         while not kill_switch.active:
             cycle_start = datetime.utcnow()
 
-            # 1. Fetch market data and compute technicals
+            # 1. Fetch market data, technicals, and news in parallel
             technical_snapshots: dict = {}
             market_data: dict = {}
             regime = None
 
-            for instrument in args.instruments:
-                if not is_market_open(instrument):
-                    continue
-                try:
-                    bars_15m = await data_fetcher.get_latest_bars(instrument, "15m", 300)
-                    bars_1h = await data_fetcher.get_latest_bars(instrument, "1h", 300)
-                    if bars_15m.is_empty():
-                        continue
-                    snap = tech_engine.compute_all(bars_15m, instrument, "15m")
-                    technical_snapshots[instrument] = snap
-                    market_data[instrument] = bars_15m
-                    if regime is None and not bars_1h.is_empty():
-                        regime = regime_detector.classify(bars_1h)
-                except Exception as exc:
-                    log.error("Data fetch error", instrument=instrument, error=str(exc))
+            market_task = _fetch_market_data(
+                args.instruments, data_fetcher, tech_engine, regime_detector
+            )
+            news_task = news_feed.fetch_all(args.instruments)
+            social_task = social_feed.fetch_all(args.instruments)
+            (technical_snapshots, market_data, regime), news, social_posts = await asyncio.gather(
+                market_task, news_task, social_task, return_exceptions=False
+            )
+
+            # Score combined sentiment (news + social) for each instrument
+            sentiment_scores = sentiment_scorer.score_all(args.instruments, news, social_posts)
 
             if not regime:
                 from src.types import MarketRegime as MR
@@ -211,11 +276,11 @@ async def main() -> None:
             # 2. Allocate capital
             allocation = await orchestrator.allocate_capital(regime)
 
-            # 3. Run all agents in parallel
+            # 3. Run all agents in parallel (with news)
             all_raw_signals = []
             agent_signal_tasks = [
                 run_agent_cycle(agent, args.instruments, technical_snapshots,
-                                market_data, [], regime)
+                                market_data, news, regime)
                 for agent in agents
             ]
             results = await asyncio.gather(*agent_signal_tasks, return_exceptions=True)
@@ -223,15 +288,20 @@ async def main() -> None:
                 if isinstance(res, list):
                     all_raw_signals.extend(res)
 
-            # 4. Conflict resolution
-            resolved_signals = orchestrator.resolve_conflicts(all_raw_signals)
+            # 4. Conflict resolution (with Claude debate for close calls)
+            resolved_signals = await orchestrator.resolve_with_debate(all_raw_signals, regime)
 
+            top_sentiment = {
+                k: round(v.combined_score, 3)
+                for k, v in sentiment_scores.items()
+                if abs(v.combined_score) > 0.1
+            }
             log.info("Cycle signals",
                      raw=len(all_raw_signals), resolved=len(resolved_signals),
-                     regime=regime.value)
+                     regime=regime.value, news=len(news),
+                     social=len(social_posts), sentiment=top_sentiment)
 
-            # 5. Execute resolved signals
-            from src.types import PortfolioState, Position
+            # 5. Build portfolio snapshot for risk checks
             portfolio = PortfolioState(
                 equity=initial_capital,
                 cash=initial_capital,
@@ -243,13 +313,29 @@ async def main() -> None:
                 if signal.action in (TradeAction.NEUTRAL, TradeAction.NO_TRADE):
                     continue
 
+                # 5a. Per-strategy risk check
                 risk_result = risk_mgr.check_signal(signal, portfolio, [])
                 if not risk_result.approved:
+                    log.debug("RiskManager blocked signal", instrument=signal.instrument,
+                              reason=risk_result.reason)
+                    continue
+
+                # 5b. Portfolio-level risk check (GlobalRiskManager)
+                agent_id = getattr(signal, "agent_id", "unknown")
+                global_result = global_risk.check_portfolio_signal(
+                    signal, agent_id, open_positions, portfolio
+                )
+                if not global_result.approved:
+                    log.info("GlobalRisk blocked signal", instrument=signal.instrument,
+                             reason=global_result.reason)
                     continue
 
                 snap = technical_snapshots.get(signal.instrument)
                 atr = snap.indicators.get("atr_14", 0.0) if snap else 0.0
-                size = position_sizer.calculate(signal, portfolio, {}, atr)
+                current_close = snap.indicators.get("close", 0.0) if snap else 0.0
+                size = position_sizer.calculate(
+                    signal, portfolio, {"current_price": current_close}, atr
+                )
                 if size.units <= 0:
                     continue
 
@@ -264,7 +350,6 @@ async def main() -> None:
                 )
 
                 if args.paper:
-                    # Simulate fill at current price
                     close = (technical_snapshots[signal.instrument].indicators.get("close", 0)
                              if signal.instrument in technical_snapshots else 0)
                     log.info("Paper order",
@@ -310,6 +395,7 @@ async def main() -> None:
     except KeyboardInterrupt:
         log.info("Shutting down...")
     finally:
+        health_server.stop()
         await AdapterFactory.disconnect_all()
         await data_fetcher.close()
 

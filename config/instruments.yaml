@@ -82,3 +82,38 @@ instruments:
       min_qty: 0.01
       commission_pct: 0.1
       exchange: "binance"
+    - symbol: "BNB/USDT"
+      min_qty: 0.01
+      commission_pct: 0.1
+      exchange: "binance"
+    - symbol: "XRP/USDT"
+      min_qty: 1.0
+      commission_pct: 0.1
+      exchange: "binance"
+
+  hk_stocks:
+    - symbol: "00700.HK"
+      name: "Tencent Holdings"
+      min_qty: 100
+      commission_pct: 0.03
+      board_lot: 100
+    - symbol: "09988.HK"
+      name: "Alibaba Group"
+      min_qty: 100
+      commission_pct: 0.03
+      board_lot: 100
+    - symbol: "00005.HK"
+      name: "HSBC Holdings"
+      min_qty: 400
+      commission_pct: 0.03
+      board_lot: 400
+    - symbol: "02318.HK"
+      name: "Ping An Insurance"
+      min_qty: 500
+      commission_pct: 0.03
+      board_lot: 500
+    - symbol: "01810.HK"
+      name: "Xiaomi Corp"
+      min_qty: 1000
+      commission_pct: 0.03
+      board_lot: 1000

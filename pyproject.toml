@@ -32,16 +32,26 @@ dependencies = [
     "streamlit>=1.38",
     "plotly>=5.22",
     "python-telegram-bot>=21.0",
-    # Testing
+    # Social sentiment (optional)
+    "asyncpraw>=7.7; extra == 'social'",
+]
+
+[project.optional-dependencies]
+social = ["asyncpraw>=7.7"]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
 ]
 
 [project.scripts]
 atlas-backtest = "scripts.run_backtest:main"
 atlas-paper = "scripts.run_paper:main"
 atlas-live = "scripts.run_live:main"
+atlas-multiagent = "scripts.run_multiagent:main"
+atlas-backtest-multi = "scripts.run_multiagent_backtest:main"
 atlas-dashboard = "dashboard.app:main"
 
 [build-system]

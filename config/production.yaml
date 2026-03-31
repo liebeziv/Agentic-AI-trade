@@ -1,0 +1,26 @@
+# =============================================================================
+# atlas-trader — Production configuration overrides
+# Values here take precedence over settings.yaml at runtime.
+# Load order: settings.yaml → production.yaml (if ATLAS_ENV=production)
+# =============================================================================
+
+system:
+  mode: "live"
+  log_level: "INFO"
+
+trading:
+  paper_mode: false
+  cycle_interval_seconds: 900       # 15-minute analysis cadence
+  max_trades_per_day: 50
+
+claude:
+  model: "claude-opus-4-6"          # Upgrade to Opus for live decisions
+  max_cost_per_day_usd: 50.0
+  temperature: 0.1                  # Lower temperature → more deterministic in live mode
+
+risk:
+  # Tighter limits for live trading (stricter than risk_params.yaml defaults)
+  max_position_size_pct: 3.0        # vs 5.0 in default
+  max_portfolio_heat_pct: 4.0       # vs 6.0 in default
+  max_daily_loss_pct: 2.0           # vs 3.0 in default
+  max_drawdown_pct: 10.0            # vs 15.0 in default

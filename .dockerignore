@@ -1,0 +1,49 @@
+# Version control
+.git
+.gitignore
+
+# Python bytecode and caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+.venv
+venv
+env
+
+# Secrets — never bake into the image
+.env
+*.env
+
+# Runtime data — mounted as a volume instead
+data/
+*.duckdb
+
+# Test suite — not needed in the runtime image
+tests/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build artefacts
+*.egg-info
+dist/
+build/
+
+# Frontend / tooling
+node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/
+*.swp
+*.swo

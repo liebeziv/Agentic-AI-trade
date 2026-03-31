@@ -44,14 +44,18 @@ class PositionSizer:
         risk_amount = equity * risk_pct
 
         # Convert risk amount to units
+        # current_price fallback from instrument_config (set by callers with live price)
+        fallback_price = float(instrument_config.get("current_price", 0.0)) if instrument_config else 0.0
+
         if rec and rec.stop_loss and rec.entry_price:
             stop_dist = abs(rec.entry_price - rec.stop_loss)
             units = risk_amount / stop_dist if stop_dist > 0 else (risk_amount / rec.entry_price)
             notional = units * rec.entry_price
         else:
-            entry = (rec.entry_price if rec and rec.entry_price else 1.0)
+            entry = (rec.entry_price if rec and rec.entry_price
+                     else (fallback_price if fallback_price > 0 else 1.0))
             units = risk_amount / entry
-            notional = risk_amount
+            notional = units * entry  # always compute from actual entry, not just risk_amount
 
         # Apply USD limits
         min_usd = self.limits.get("min_position_size_usd", 100)

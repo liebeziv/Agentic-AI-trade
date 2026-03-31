@@ -1,6 +1,7 @@
 """Abstract exchange adapter interface — unified API for all brokers."""
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
@@ -83,13 +84,35 @@ class AdapterFactory:
             return cls._adapters[key]
 
         elif inst_type == "crypto":
+            # Prefer OKX if configured, fall back to Binance
+            if config.get("okx", {}).get("api_key") or os.getenv("OKX_API_KEY"):
+                key = "okx"
+                if key not in cls._adapters:
+                    from src.execution.adapters.okx_adapter import OKXAdapter
+                    cls._adapters[key] = OKXAdapter(config.get("okx", {}))
+                return cls._adapters[key]
             key = "binance"
             if key not in cls._adapters:
                 from src.execution.adapters.binance_adapter import BinanceAdapter
                 cls._adapters[key] = BinanceAdapter(config.get("binance", {}))
             return cls._adapters[key]
 
-        elif inst_type in ("futures", "hk_stocks"):
+        elif inst_type == "hk_stocks":
+            # Prefer Futu OpenD if FUTU_HOST is set or config has a "futu" key
+            if config.get("futu") or os.getenv("FUTU_HOST"):
+                key = "futu"
+                if key not in cls._adapters:
+                    from src.execution.adapters.futu_adapter import FutuAdapter
+                    cls._adapters[key] = FutuAdapter(config.get("futu", {}))
+                return cls._adapters[key]
+            # Fall back to Interactive Brokers
+            key = "ib"
+            if key not in cls._adapters:
+                from src.execution.adapters.ib_adapter import IBAdapter
+                cls._adapters[key] = IBAdapter(config.get("ib", {}))
+            return cls._adapters[key]
+
+        elif inst_type == "futures":
             key = "ib"
             if key not in cls._adapters:
                 from src.execution.adapters.ib_adapter import IBAdapter

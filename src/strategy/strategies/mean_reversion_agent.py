@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from src.strategy.strategies.base_agent import BaseStrategyAgent
+from src.strategy.strategies.base_agent import BaseStrategyAgent, _extract_symbols
 from src.strategy.signal_aggregator import compute_technical_score, compute_composite, compute_regime_score
 from src.types import (
     MarketRegime, NewsItem, SignalScore, TechnicalSnapshot, TradeAction,
@@ -45,8 +45,8 @@ class MeanReversionAgent(BaseStrategyAgent):
 
     @property
     def target_instruments(self) -> list[str]:
-        return (self.config.get("instruments", {}).get("forex", []) +
-                self.config.get("instruments", {}).get("us_stocks", []))
+        cfg = self.config.get("instruments", {})
+        return _extract_symbols(cfg.get("forex", []) + cfg.get("us_stocks", []))
 
     def get_parameters(self) -> dict:
         return dict(self._params)

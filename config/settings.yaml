@@ -34,3 +34,23 @@ backtest:
   slippage_pct: 0.05
   walk_forward_window_days: 90
   walk_forward_step_days: 30
+
+news:
+  newsapi_key: ""           # set via NEWSAPI_KEY env var
+  rss_feeds:
+    - url: "https://feeds.reuters.com/reuters/businessNews"
+      name: "Reuters Business"
+    - url: "https://feeds.bbci.co.uk/news/business/rss.xml"
+      name: "BBC Business"
+
+social:
+  reddit_client_id: ""     # set via REDDIT_CLIENT_ID env var
+  reddit_client_secret: "" # set via REDDIT_CLIENT_SECRET env var
+  reddit_user_agent: "atlas-trader/1.0"
+  stocktwits_token: ""     # set via STOCKTWITS_ACCESS_TOKEN env var
+
+futu:
+  host: "127.0.0.1"        # override via FUTU_HOST
+  port: 11111               # override via FUTU_PORT
+  trade_env: 1              # 0=real, 1=simulate; override via FUTU_TRADE_ENV
+  unlock_pwd: ""            # override via FUTU_UNLOCK_PWD

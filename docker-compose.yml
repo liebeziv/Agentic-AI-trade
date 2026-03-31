@@ -1,0 +1,77 @@
+version: "3.9"
+
+# =============================================================================
+# atlas-trader — docker-compose
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # trader: main multi-agent trading loop
+  # ---------------------------------------------------------------------------
+  trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: atlas-trader:latest
+    container_name: atlas_trader
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - atlas_data:/app/data
+      - ./config:/app/config:ro
+    networks:
+      - atlas_net
+    # Override is not needed — Dockerfile CMD is already run_multiagent.py --paper
+    # Uncomment to switch to live mode:
+    # command: ["python", "scripts/run_multiagent.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # dashboard: Streamlit web UI
+  # ---------------------------------------------------------------------------
+  dashboard:
+    image: atlas-trader:latest
+    container_name: atlas_dashboard
+    restart: unless-stopped
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+    env_file: .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - atlas_data:/app/data
+      - ./config:/app/config:ro
+    networks:
+      - atlas_net
+    depends_on:
+      trader:
+        condition: service_healthy
+
+# =============================================================================
+# Named volumes
+# =============================================================================
+volumes:
+  atlas_data:
+    name: atlas_data
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  atlas_net:
+    driver: bridge
+    name: atlas_net

@@ -63,6 +63,19 @@ class AgentPerformance:
         return (sharpe_norm * 0.5 + wr_norm * 0.3 + dd_penalty * 0.2)
 
 
+def _extract_symbols(items: list) -> list[str]:
+    """Extract symbol strings from a list that may contain dicts (YAML) or plain strings."""
+    result = []
+    for item in items:
+        if isinstance(item, dict):
+            sym = item.get("symbol")
+            if sym:
+                result.append(sym)
+        elif isinstance(item, str):
+            result.append(item)
+    return result
+
+
 class BaseStrategyAgent(ABC):
     """Abstract base for all specialist trading agents."""
 

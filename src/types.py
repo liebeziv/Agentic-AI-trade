@@ -78,6 +78,7 @@ class NewsItem:
     url: str = ""
     relevance_score: float = 0.0
     instruments: list[str] = field(default_factory=list)
+    sentiment_score: float = 0.0   # -1..+1, parsed from sentiment_raw
     sentiment_raw: str = ""
 
 

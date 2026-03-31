@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Python 3.11)
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Set up Python with pip cache
+      # -----------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # -----------------------------------------------------------------------
+      # 3. Install dependencies (including dev extras)
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # -----------------------------------------------------------------------
+      # 4. Syntax-check entry-point scripts
+      # -----------------------------------------------------------------------
+      - name: Syntax check — entry-point scripts
+        run: |
+          python -m py_compile scripts/run_multiagent.py
+          python -m py_compile scripts/run_backtest.py
+
+      # -----------------------------------------------------------------------
+      # 5. Run test suite
+      # -----------------------------------------------------------------------
+      - name: Run pytest
+        run: |
+          python -m pytest tests/ -q --tb=short \
+            --junitxml=test-results/junit.xml \
+            --cov=src --cov-report=xml:test-results/coverage.xml
+        env:
+          # Provide placeholder secrets so modules that read env vars at import
+          # time don't raise hard errors during testing
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'test-placeholder' }}
+          ALPACA_API_KEY: test-placeholder
+          ALPACA_SECRET_KEY: test-placeholder
+          BINANCE_API_KEY: test-placeholder
+          BINANCE_SECRET: test-placeholder
+          TELEGRAM_BOT_TOKEN: test-placeholder
+          TELEGRAM_CHAT_ID: "0"
+          DUCKDB_PATH: ":memory:"
+
+      # -----------------------------------------------------------------------
+      # 6. Upload test results as artifact
+      # -----------------------------------------------------------------------
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from src.strategy.strategies.base_agent import BaseStrategyAgent
+from src.strategy.strategies.base_agent import BaseStrategyAgent, _extract_symbols
 from src.strategy.signal_aggregator import SignalAggregator, compute_technical_score
 from src.types import (
     MarketRegime, NewsItem, SignalScore, TechnicalSnapshot, TradeAction,
@@ -15,9 +15,11 @@ log = get_logger(__name__)
 _DEFAULT_PARAMS = {
     "rsi_oversold": 35,
     "rsi_overbought": 65,
-    "adx_min": 20,           # Only trade when ADX > this (confirming trend)
+    "adx_min": 15,           # Only trade when ADX > this (confirming trend)
+    "adx_min_weak": 12,      # Lower threshold for WEAK_TREND regime
     "macd_threshold": 0.0,
-    "min_composite": 0.30,   # Higher bar than default 0.25 for momentum
+    "min_composite": 0.25,   # Threshold for signal generation
+    "min_composite_weak": 0.30,  # Higher bar in weak-trend regime
 }
 
 
@@ -44,8 +46,8 @@ class MomentumAgent(BaseStrategyAgent):
 
     @property
     def target_instruments(self) -> list[str]:
-        return self.config.get("instruments", {}).get("us_stocks", []) + \
-               self.config.get("instruments", {}).get("futures", [])
+        cfg = self.config.get("instruments", {})
+        return _extract_symbols(cfg.get("us_stocks", []) + cfg.get("futures", []))
 
     def get_parameters(self) -> dict:
         return dict(self._params)
@@ -64,6 +66,10 @@ class MomentumAgent(BaseStrategyAgent):
         if regime not in self.preferred_regimes:
             return []
 
+        is_weak = regime == MarketRegime.WEAK_TREND
+        adx_threshold = self._params["adx_min_weak"] if is_weak else self._params["adx_min"]
+        min_score = self._params["min_composite_weak"] if is_weak else self._params["min_composite"]
+
         signals: list[SignalScore] = []
 
         for instrument, snap in technical.items():
@@ -75,8 +81,8 @@ class MomentumAgent(BaseStrategyAgent):
             sma50 = ind.get("sma_50", 0)
             close = ind.get("close", 0) or 1
 
-            # ADX filter: only trade strong trends
-            if adx < self._params["adx_min"]:
+            # ADX filter: only trade when some trend is present
+            if adx < adx_threshold:
                 continue
 
             # Score: each factor contributes
@@ -96,7 +102,7 @@ class MomentumAgent(BaseStrategyAgent):
             elif sma20 < sma50:
                 score -= 0.3
 
-            if abs(score) < self._params["min_composite"]:
+            if abs(score) < min_score:
                 continue
 
             action = TradeAction.BUY if score > 0 else TradeAction.SELL

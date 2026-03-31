@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import polars as pl
 
-from src.strategy.strategies.base_agent import BaseStrategyAgent
+from src.strategy.strategies.base_agent import BaseStrategyAgent, _extract_symbols
 from src.strategy.signal_aggregator import compute_composite, compute_regime_score
 from src.types import (
     MarketRegime, NewsItem, SignalScore, TechnicalSnapshot, TradeAction,
@@ -15,12 +15,14 @@ from src.utils.logger import get_logger
 log = get_logger(__name__)
 
 _DEFAULT_PARAMS = {
-    "min_news_relevance": 0.7,
-    "min_claude_confidence": 0.60,   # 0.0–1.0 scale
-    "max_news_age_hours": 2,
+    "min_news_relevance": 0.5,       # lowered: 0.7 → 0.5 to pass more news items
+    "min_claude_confidence": 0.55,   # lowered: 0.60 → 0.55
+    "max_news_age_hours": 4,         # extended: 2 → 4 hours
     "atr_stop_multiple": 2.5,
     "atr_tp_multiple": 4.0,
     "require_technical_alignment": True,
+    "technical_fallback": True,      # use technical signals when no news available
+    "technical_fallback_min_score": 0.35,
 }
 
 
@@ -47,14 +49,43 @@ class EventDrivenAgent(BaseStrategyAgent):
     @property
     def target_instruments(self) -> list[str]:
         cfg = self.config.get("instruments", {})
-        return (cfg.get("us_stocks", []) + cfg.get("crypto", []) +
-                cfg.get("futures", []))
+        return _extract_symbols(
+            cfg.get("us_stocks", []) + cfg.get("crypto", []) + cfg.get("futures", [])
+        )
 
     def get_parameters(self) -> dict:
         return dict(self._params)
 
     def set_parameters(self, params: dict) -> None:
         self._params.update(params)
+
+    def _technical_fallback_signals(
+        self, technical: dict, regime
+    ) -> list[SignalScore]:
+        """Technical-only signals when no news is available."""
+        from datetime import datetime as _dt
+        from src.strategy.signal_aggregator import compute_technical_score
+        signals = []
+        min_score = self._params.get("technical_fallback_min_score", 0.35)
+        regime_score = compute_regime_score(regime)
+        for instrument, snap in technical.items():
+            tech_score = compute_technical_score(snap)
+            if abs(tech_score) < min_score:
+                continue
+            composite, action = compute_composite(tech_score, 0.0, regime_score, 0.50)
+            if action in (TradeAction.NO_TRADE, TradeAction.NEUTRAL):
+                continue
+            signals.append(SignalScore(
+                instrument=instrument,
+                timestamp=_dt.utcnow(),
+                technical_score=tech_score,
+                sentiment_score=0.0,
+                regime_score=regime_score,
+                claude_confidence=0.50,
+                composite_score=composite,
+                action=action,
+            ))
+        return signals
 
     async def generate_signals(
         self,
@@ -63,9 +94,14 @@ class EventDrivenAgent(BaseStrategyAgent):
         news: list[NewsItem],
         regime: MarketRegime,
     ) -> list[SignalScore]:
-        """Generate event-driven signals from high-relevance news."""
+        """Generate event-driven signals from high-relevance news.
+        Falls back to technical-only signals when no news is available.
+        """
         if not news:
-            return []
+            if not self._params.get("technical_fallback", False):
+                return []
+            return self._technical_fallback_signals(technical, regime)
+
 
         # Filter: recent and relevant
         now = datetime.now(tz=timezone.utc)
